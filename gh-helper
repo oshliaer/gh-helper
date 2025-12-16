@@ -1,0 +1,639 @@
+#!/bin/bash
+
+# GH Helper Script
+# This script fetches pull request comments and displays them in a tree structure
+# Usage: ./gh-helper <PR_NUMBER> [OPTIONS]
+# Options:
+#   --code-review-only, -cr : Show only code review comments (comments on specific code lines)
+#   --reviews-only, -r : Show only reviews
+#   --pr-comments-only, -pc : Show only PR comments (not review comments)
+#   --unresolved-only, -u : Show only unresolved comments
+#   --reply <COMMENT_ID> [OPTIONS]: Reply to a specific comment
+
+# Function to print usage information
+usage() {
+    echo "Usage: $0 <PR_NUMBER> [OPTIONS]"
+    echo "Options:"
+    echo "  --code-review-only, -cr : Show only code review comments (comments on specific code lines)"
+    echo "  --reviews-only, -r : Show only reviews"
+    echo "  --pr-comments-only, -pc : Show only PR comments (not review comments)"
+    echo "  --unresolved-only, -u : Show only unresolved comments"
+    echo "  --count <N> : Limit output to N comments (works with other filters)"
+    echo "  --reply <COMMENT_ID> : Reply to a specific comment and optionally resolve it"
+    echo "    -m <MESSAGE> : Message to reply with"
+    echo "    --resolve : Resolve the comment after replying"
+    echo "  --helpai : Display AI instructions from ai.instructions.md"
+    echo "Example: $0 123 --code-review-only"
+    echo "Example: $0 123 --reply PR_kwDO... --resolve -m \"Fixed as suggested\""
+    echo "Example: $0 123 --unresolved-only --count 1"
+    exit 1
+}
+
+# Function to print AI instructions
+helpai() {
+    local script_dir
+    script_dir="$(dirname "$(readlink -f "$0")")"
+    local instructions_file="$script_dir/ai.instructions.md"
+    if [[ -f "$instructions_file" ]]; then
+        cat "$instructions_file"
+    else
+        echo "Error: ai.instructions.md file not found in $script_dir" >&2
+        exit 1
+    fi
+    exit 0
+}
+
+# Function to print error messages
+error() {
+    echo "Error: $1" >&2
+    exit 1
+}
+
+# Check if PR number is provided or if help is requested
+if [ $# -lt 1 ] || [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+    usage
+fi
+
+# Check if --helpai is requested
+if [ "$1" = "--helpai" ]; then
+    helpai
+fi
+
+PR_NUMBER=$1
+SHOW_CODE_REVIEW_ONLY=false
+SHOW_REVIEWS_ONLY=false
+SHOW_PR_COMMENTS_ONLY=false
+SHOW_UNRESOLVED_ONLY=false
+DO_REPLY=false
+REPLY_COMMENT_ID=""
+REPLY_MESSAGE=""
+DO_RESOLVE=false
+COUNT_LIMIT=-1  # Default to no limit (-1)
+
+# Parse additional arguments
+shift
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --code-review-only|-cr)
+            SHOW_CODE_REVIEW_ONLY=true
+            shift
+            ;;
+        --reviews-only|-r)
+            SHOW_REVIEWS_ONLY=true
+            shift
+            ;;
+        --pr-comments-only|-pc)
+            SHOW_PR_COMMENTS_ONLY=true
+            shift
+            ;;
+        --unresolved-only|-u)
+            SHOW_UNRESOLVED_ONLY=true
+            shift
+            ;;
+        --count)
+            COUNT_LIMIT="$2"
+            if [ -z "$COUNT_LIMIT" ] || ! [[ "$COUNT_LIMIT" =~ ^[0-9]+$ ]]; then
+                error "Count must be a positive integer"
+            fi
+            shift 2
+            ;;
+        --reply)
+            DO_REPLY=true
+            REPLY_COMMENT_ID="$2"
+            if [ -z "$REPLY_COMMENT_ID" ]; then
+                error "Comment ID is required after --reply"
+            fi
+            shift 2
+            ;;
+        -m)
+            REPLY_MESSAGE="$2"
+            if [ -z "$REPLY_MESSAGE" ]; then
+                error "Message is required after -m"
+            fi
+            shift 2
+            ;;
+        --resolve)
+            DO_RESOLVE=true
+            shift
+            ;;
+        --helpai)
+            helpai
+            ;;
+        *)
+            echo "Unknown option: $1"
+            usage
+            ;;
+    esac
+done
+
+# Validate that the argument is a number
+if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+    error "PR number must be a positive integer"
+fi
+
+# Check if gh command is available
+if ! command -v gh &> /dev/null; then
+    error "gh command is not installed or not in PATH. Please install GitHub CLI."
+fi
+
+echo "Fetching comments for PR #$PR_NUMBER..."
+
+# Get the current repository name
+REPO_NAME=$(gh repo view --json nameWithOwner | jq -r '.nameWithOwner')
+
+# Check if we're in a GitHub repository
+if [ "$REPO_NAME" = "null" ]; then
+    error "Not in a GitHub repository or gh repo view failed. Please run this in a GitHub repository directory or authenticate with gh."
+fi
+
+echo "Repository: $REPO_NAME"
+
+# Fetch pull request reviews and review comments
+reviews_response=$(gh api "repos/$REPO_NAME/pulls/$PR_NUMBER/reviews" 2>/dev/null)
+comments_response=$(gh api "repos/$REPO_NAME/pulls/$PR_NUMBER/comments" 2>/dev/null)
+
+# Handle potential 404 for review comments (line comments)
+review_comments_response=$(gh api "repos/$REPO_NAME/pulls/$PR_NUMBER/review-comments" 2>&1)
+review_comments_exit_code=$?
+
+# Create temporary files to store responses
+TEMP_REVIEWS=$(mktemp)
+TEMP_COMMENTS=$(mktemp)
+TEMP_REVIEW_COMMENTS=$(mktemp)
+
+# Save responses to temp files
+echo "$reviews_response" > "$TEMP_REVIEWS"
+echo "$comments_response" > "$TEMP_COMMENTS"
+
+# Only save review comments if the API call was successful (exit code 0)
+if [ $review_comments_exit_code -eq 0 ]; then
+    echo "$review_comments_response" > "$TEMP_REVIEW_COMMENTS"
+else
+    # If the API returned a 404 or other error, create an empty JSON array
+    echo "[]" > "$TEMP_REVIEW_COMMENTS"
+    # Optionally log the error for debugging
+    # echo "API call for review comments failed with exit code: $review_comments_exit_code" >&2
+fi
+
+# Function to print code review comments (line comments) only
+print_code_review_comments() {
+    echo ""
+    echo "Code Review Comments for PR #$PR_NUMBER in $REPO_NAME:"
+    echo "============================================="
+
+    # Get comments that are part of a review (have a pull_request_review_id)
+    has_review_comments=false
+    count=0
+
+    if [ -s "$TEMP_COMMENTS" ] && [ "$(jq 'length' "$TEMP_COMMENTS")" -gt 0 ]; then
+        # Filter comments that are part of reviews
+        review_comments_json=$(jq -c '.[] | select(.pull_request_review_id)' "$TEMP_COMMENTS")
+
+        if [ -n "$review_comments_json" ]; then
+            has_review_comments=true
+            echo "$review_comments_json" | while IFS= read -r comment; do
+                if [ $COUNT_LIMIT -ne -1 ] && [ $count -ge $COUNT_LIMIT ]; then
+                    return
+                fi
+
+                id=$(echo "$comment" | jq -r '.id')
+                author=$(echo "$comment" | jq -r '.user.login')
+                body=$(echo "$comment" | jq -r '.body // "No body"')
+                created_at=$(echo "$comment" | jq -r '.created_at')
+                path=$(echo "$comment" | jq -r '.path // "No path"')
+                line_number=$(echo "$comment" | jq -r '.line // "No line"')
+                review_id=$(echo "$comment" | jq -r '.pull_request_review_id')
+
+                echo "├── Comment ID: $id"
+                echo "│   ├── Author: $author"
+                echo "│   ├── Review ID: $review_id"
+                echo "│   ├── Created: $created_at"
+                echo "│   ├── Location: $path:$line_number"
+                echo "│   └── Comment:"
+                # Print comment body with proper indentation
+                echo "$body" | sed 's/^/│      /'
+                echo "│"
+                ((count++))
+            done
+        fi
+    fi
+
+    # Also check actual review comments (comments on specific diff hunks)
+    if [ -s "$TEMP_REVIEW_COMMENTS" ] && [ "$(jq 'length' "$TEMP_REVIEW_COMMENTS")" -gt 0 ]; then
+        jq -c '.[]' "$TEMP_REVIEW_COMMENTS" | while IFS= read -r comment; do
+            if [ $COUNT_LIMIT -ne -1 ] && [ $count -ge $COUNT_LIMIT ]; then
+                return
+            fi
+
+            # Check if the comment is an empty JSON object
+            if [ "$(echo "$comment" | jq 'has("id")')" = "true" ]; then
+                has_review_comments=true
+                id=$(echo "$comment" | jq -r '.id')
+                author=$(echo "$comment" | jq -r '.user.login')
+                body=$(echo "$comment" | jq -r '.body // "No body"')
+                created_at=$(echo "$comment" | jq -r '.created_at')
+                path=$(echo "$comment" | jq -r '.path // "No path"')
+                line_number=$(echo "$comment" | jq -r '.line // "No line"')
+                diff_hunk=$(echo "$comment" | jq -r '.diff_hunk // "No diff hunk"')
+
+                echo "├── Comment ID: $id"
+                echo "│   ├── Author: $author"
+                echo "│   ├── Created: $created_at"
+                echo "│   ├── Location: $path:$line_number"
+                echo "│   ├── Diff Hunk: $diff_hunk"
+                echo "│   └── Comment:"
+                # Print comment body with proper indentation
+                echo "$body" | sed 's/^/│      /'
+                echo "│"
+                ((count++))
+            fi
+        done
+    fi
+
+    if [ "$has_review_comments" = false ]; then
+        echo "No code review comments found"
+        echo "│"
+    fi
+}
+
+# Function to print reviews only
+print_reviews_only() {
+    echo ""
+    echo "Reviews for PR #$PR_NUMBER in $REPO_NAME:"
+    echo "=================================="
+
+    if [ -s "$TEMP_REVIEWS" ] && [ "$(jq 'length' "$TEMP_REVIEWS")" -gt 0 ]; then
+        count=0
+        jq -c '.[]' "$TEMP_REVIEWS" | while IFS= read -r review; do
+            if [ $COUNT_LIMIT -ne -1 ] && [ $count -ge $COUNT_LIMIT ]; then
+                return
+            fi
+
+            id=$(echo "$review" | jq -r '.id')
+            author=$(echo "$review" | jq -r '.user.login')
+            state=$(echo "$review" | jq -r '.state')
+            body=$(echo "$review" | jq -r '.body // "No body"')
+            submitted_at=$(echo "$review" | jq -r '.submitted_at')
+
+            echo "├── Review ID: $id"
+            echo "│   ├── Author: $author"
+            echo "│   ├── Status: $state"
+            echo "│   ├── Submitted: $submitted_at"
+            echo "│   └── Review:"
+            # Print review body with proper indentation
+            echo "$body" | sed 's/^/│      /'
+            echo "│"
+            ((count++))
+        done
+    else
+        echo "No reviews found"
+        echo "│"
+    fi
+}
+
+# Function to print PR comments only
+print_pr_comments_only() {
+    echo ""
+    echo "PR Comments for PR #$PR_NUMBER in $REPO_NAME:"
+    echo "=================================="
+
+    if [ -s "$TEMP_COMMENTS" ] && [ "$(jq 'length' "$TEMP_COMMENTS")" -gt 0 ]; then
+        # Filter out comments that are part of reviews (have pull_request_review_id)
+        count=0
+        jq -c '.[] | select(.pull_request_review_id | not)' "$TEMP_COMMENTS" | while IFS= read -r comment; do
+            if [ $COUNT_LIMIT -ne -1 ] && [ $count -ge $COUNT_LIMIT ]; then
+                return
+            fi
+
+            id=$(echo "$comment" | jq -r '.id')
+            author=$(echo "$comment" | jq -r '.user.login')
+            body=$(echo "$comment" | jq -r '.body // "No body"')
+            created_at=$(echo "$comment" | jq -r '.created_at')
+            path=$(echo "$comment" | jq -r '.path // "No path"')
+            line_number=$(echo "$comment" | jq -r '.line // "No line"')
+
+            echo "├── Comment ID: $id"
+            echo "│   ├── Author: $author"
+            echo "│   ├── Created: $created_at"
+            echo "│   ├── Location: $path:$line_number"
+            echo "│   └── Comment:"
+            # Print comment body with proper indentation
+            echo "$body" | sed 's/^/│      /'
+            echo "│"
+            ((count++))
+        done
+    else
+        echo "No PR comments found"
+        echo "│"
+    fi
+}
+
+# Function to print all comments in tree format
+print_comments_tree() {
+    echo ""
+    echo "Comments for PR #$PR_NUMBER in $REPO_NAME:"
+    echo "=========================================="
+
+    # Print reviews (if any)
+    if [ -s "$TEMP_REVIEWS" ] && [ "$(jq 'length' "$TEMP_REVIEWS")" -gt 0 ]; then
+        echo "Reviews:"
+        echo "--------"
+        count=0
+        jq -c '.[]' "$TEMP_REVIEWS" | while read -r review; do
+            if [ $COUNT_LIMIT -ne -1 ] && [ $count -ge $COUNT_LIMIT ]; then
+                return
+            fi
+
+            id=$(echo "$review" | jq -r '.id')
+            author=$(echo "$review" | jq -r '.user.login')
+            state=$(echo "$review" | jq -r '.state')
+            body=$(echo "$review" | jq -r '.body // "No body"')
+            submitted_at=$(echo "$review" | jq -r '.submitted_at')
+
+            echo "├── Review ID: $id"
+            echo "│   ├── Author: $author"
+            echo "│   ├── Status: $state"
+            echo "│   ├── Submitted: $submitted_at"
+            echo "│   └── Review:"
+            # Print review body with proper indentation
+            echo "$body" | sed 's/^/│      /'
+            echo "│"
+            ((count++))
+        done
+    fi
+
+    # Print pull request comments (if any)
+    if [ -s "$TEMP_COMMENTS" ] && [ "$(jq 'length' "$TEMP_COMMENTS")" -gt 0 ]; then
+        echo "PR Comments:"
+        echo "------------"
+        # Filter out comments that are part of reviews
+        jq -c '.[] | select(.pull_request_review_id | not)' "$TEMP_COMMENTS" | while read -r comment; do
+            if [ $COUNT_LIMIT -ne -1 ] && [ $count -ge $COUNT_LIMIT ]; then
+                return
+            fi
+
+            id=$(echo "$comment" | jq -r '.id')
+            author=$(echo "$comment" | jq -r '.user.login')
+            body=$(echo "$comment" | jq -r '.body // "No body"')
+            created_at=$(echo "$comment" | jq -r '.created_at')
+            path=$(echo "$comment" | jq -r '.path // "No path"')
+            line_number=$(echo "$comment" | jq -r '.line // "No line"')
+
+            echo "├── Comment ID: $id"
+            echo "│   ├── Author: $author"
+            echo "│   ├── Created: $created_at"
+            echo "│   ├── Location: $path:$line_number"
+            echo "│   └── Comment:"
+            # Print comment body with proper indentation
+            echo "$body" | sed 's/^/│      /'
+            echo "│"
+            ((count++))
+        done
+    fi
+
+    # Print review comments (if any)
+    if [ -s "$TEMP_REVIEW_COMMENTS" ] && [ "$(jq 'length' "$TEMP_REVIEW_COMMENTS")" -gt 0 ]; then
+        echo "Review Comments:"
+        echo "----------------"
+        jq -c '.[]' "$TEMP_REVIEW_COMMENTS" | while IFS= read -r comment; do
+            if [ $COUNT_LIMIT -ne -1 ] && [ $count -ge $COUNT_LIMIT ]; then
+                return
+            fi
+
+            # Check if the comment is an empty JSON object
+            if [ "$(echo "$comment" | jq 'has("id")')" = "true" ]; then
+                id=$(echo "$comment" | jq -r '.id')
+                author=$(echo "$comment" | jq -r '.user.login')
+                body=$(echo "$comment" | jq -r '.body // "No body"')
+                created_at=$(echo "$comment" | jq -r '.created_at')
+                path=$(echo "$comment" | jq -r '.path // "No path"')
+                line_number=$(echo "$comment" | jq -r '.line // "No line"')
+                diff_hunk=$(echo "$comment" | jq -r '.diff_hunk // "No diff hunk"')
+
+                echo "├── Comment ID: $id"
+                echo "│   ├── Author: $author"
+                echo "│   ├── Created: $created_at"
+                echo "│   ├── Location: $path:$line_number"
+                echo "│   ├── Diff Hunk: $diff_hunk"
+                echo "│   └── Comment:"
+                # Print comment body with proper indentation
+                echo "$body" | sed 's/^/│      /'
+                echo "│"
+                ((count++))
+            fi
+        done
+    else
+        # If there are no review comments, just show that the section is empty
+        echo "Review Comments:"
+        echo "----------------"
+        echo "No review comments found"
+        echo "│"
+    fi
+}
+
+# Function to print unresolved comments only
+print_unresolved_comments() {
+    echo ""
+    echo "Unresolved Comments for PR #$PR_NUMBER in $REPO_NAME:"
+    echo "=================================="
+
+    # Get repository owner and name for GraphQL query
+    OWNER=$(echo "$REPO_NAME" | cut -d'/' -f1)
+    REPO=$(echo "$REPO_NAME" | cut -d'/' -f2)
+
+    echo "Fetching unresolved comments using GraphQL API..."
+
+    # Query for unresolved review threads using GraphQL
+    unresolved_result=$(gh api graphql -f query='
+      query($owner: String!, $name: String!, $pr_number: Int!) {
+        repository(owner: $owner, name: $name) {
+          pullRequest(number: $pr_number) {
+            reviewThreads(first: 100) {
+              nodes {
+                isResolved
+                comments(first: 10) {
+                  nodes {
+                    body
+                    author {
+                      login
+                    }
+                    url
+                    path
+                    line
+                    id
+                    createdAt
+                    replyTo {
+                      id
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    ' -F owner="$OWNER" -F name="$REPO" -F pr_number="$PR_NUMBER" --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)')
+
+    if [ -n "$unresolved_result" ]; then
+        count=0
+        echo "$unresolved_result" | while IFS= read -r thread; do
+            if [ $COUNT_LIMIT -ne -1 ] && [ $count -ge $COUNT_LIMIT ]; then
+                return
+            fi
+
+            comment=$(echo "$thread" | jq -r '.comments.nodes[0]')
+            author=$(echo "$comment" | jq -r '.author.login')
+            body=$(echo "$comment" | jq -r '.body // "No body"')
+            path=$(echo "$comment" | jq -r '.path // "No path"')
+            line_number=$(echo "$comment" | jq -r '.line // "No line"')
+            url=$(echo "$comment" | jq -r '.url')
+            created_at=$(echo "$comment" | jq -r '.createdAt')
+            comment_id=$(echo "$comment" | jq -r '.id')
+
+            echo "├── Comment ID: $comment_id"
+            echo "│   ├── Author: $author"
+            echo "│   ├── Created: $created_at"
+            echo "│   ├── Location: $path:$line_number"
+            echo "│   ├── URL: $url"
+            echo "│   └── Comment:"
+            # Print comment body with proper indentation
+            echo "$body" | sed 's/^/│      /'
+            echo "│"
+            ((count++))
+        done
+    else
+        echo "No unresolved comments found"
+        echo "│"
+    fi
+}
+
+# Function to reply to a specific comment and optionally resolve it
+reply_to_comment() {
+    if [ -z "$REPLY_COMMENT_ID" ]; then
+        error "Comment ID is required for reply operation"
+    fi
+
+    if [ -z "$REPLY_MESSAGE" ]; then
+        # Prompt for message if not provided
+        echo "Enter your reply to comment $REPLY_COMMENT_ID:"
+        read -r REPLY_MESSAGE
+    fi
+
+    # Get repository owner and name for GraphQL query
+    OWNER=$(echo "$REPO_NAME" | cut -d'/' -f1)
+    REPO=$(echo "$REPO_NAME" | cut -d'/' -f2)
+
+    echo "Replying to comment ID: $REPLY_COMMENT_ID"
+
+    # First, we need to get the thread ID for the comment
+    # This requires finding the review thread that contains the comment
+    echo "Getting thread information for comment..."
+
+    # Use GraphQL to get the thread ID containing this comment
+    THREAD_ID=$(gh api graphql -f query='
+      query($owner: String!, $name: String!, $pr_number: Int!) {
+        repository(owner: $owner, name: $name) {
+          pullRequest(number: $pr_number) {
+            reviewThreads(first: 100) {
+              nodes {
+                id
+                comments(first: 100) {
+                  nodes {
+                    id
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    ' -F owner="$OWNER" -F name="$REPO" -F pr_number="$PR_NUMBER" --jq ".data.repository.pullRequest.reviewThreads.nodes[] | select(.comments.nodes[].id == \"$REPLY_COMMENT_ID\") | .id")
+
+    if [ -n "$THREAD_ID" ]; then
+        echo "Found thread ID: $THREAD_ID"
+
+        echo "Adding reply to thread..."
+        # Add the reply to the thread
+        REPLY_RESULT=$(gh api graphql -f query='
+          mutation($pullRequestReviewThreadId: ID!, $body: String!) {
+            addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $pullRequestReviewThreadId, body: $body}) {
+              comment {
+                id
+                body
+                author {
+                  login
+                }
+              }
+            }
+          }
+        ' -F pullRequestReviewThreadId="$THREAD_ID" -F body="$REPLY_MESSAGE" 2>&1)
+
+        if [ $? -eq 0 ]; then
+            echo "Successfully replied to comment thread."
+            echo "Reply details: $REPLY_RESULT"
+
+            # If --resolve flag was provided, resolve the thread
+            if [ "$DO_RESOLVE" = true ]; then
+                echo "Attempting to resolve the review thread..."
+                RESOLVE_RESULT=$(gh api graphql -f query='
+                  mutation($threadId: ID!) {
+                    resolveReviewThread(input: {threadId: $threadId}) {
+                      thread {
+                        id
+                        isResolved
+                      }
+                    }
+                  }
+                ' -F threadId="$THREAD_ID" 2>&1)
+
+                if [ $? -eq 0 ]; then
+                    echo "Successfully resolved the review thread."
+                    echo "Resolution details: $RESOLVE_RESULT"
+                else
+                    echo "Error resolving thread: $RESOLVE_RESULT"
+                    error "Failed to resolve the review thread"
+                fi
+            fi
+        else
+            error "Failed to add reply to thread: $REPLY_RESULT"
+        fi
+    else
+        # If it's not a review thread, it might be a general PR comment
+        echo "Comment ID $REPLY_COMMENT_ID not found in review threads. It might be a general PR comment."
+        echo "Note: GitHub's GraphQL API is needed to reply to and resolve review comments."
+        error "Unable to find review thread for comment ID: $REPLY_COMMENT_ID"
+    fi
+}
+
+# Check if any mode is specified
+if [ "$DO_REPLY" = true ]; then
+    reply_to_comment
+elif [ "$SHOW_CODE_REVIEW_ONLY" = true ]; then
+    print_code_review_comments
+elif [ "$SHOW_REVIEWS_ONLY" = true ]; then
+    print_reviews_only
+elif [ "$SHOW_PR_COMMENTS_ONLY" = true ]; then
+    print_pr_comments_only
+elif [ "$SHOW_UNRESOLVED_ONLY" = true ]; then
+    print_unresolved_comments
+else
+    # Check if any of the responses contain data
+    all_empty=true
+    if [ -s "$TEMP_REVIEWS" ] && [ "$(jq 'length' "$TEMP_REVIEWS")" -gt 0 ]; then
+        all_empty=false
+    elif [ -s "$TEMP_COMMENTS" ] && [ "$(jq 'length' "$TEMP_COMMENTS")" -gt 0 ]; then
+        all_empty=false
+    elif [ -s "$TEMP_REVIEW_COMMENTS" ] && [ "$(jq 'length' "$TEMP_REVIEW_COMMENTS")" -gt 0 ]; then
+        all_empty=false
+    fi
+
+    if [ "$all_empty" = true ]; then
+        echo "No reviews or comments found for PR #$PR_NUMBER"
+    else
+        # Call the function to print the comments tree
+        print_comments_tree
+    fi
+fi
+
+# Clean up temporary files
+rm -f "$TEMP_REVIEWS" "$TEMP_COMMENTS" "$TEMP_REVIEW_COMMENTS"
