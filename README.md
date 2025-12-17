@@ -15,7 +15,7 @@ gh auth login
 ### Базовое использование
 
 ```bash
-./gh-helper <PR_NUMBER> [OPTIONS]
+$> gh-helper <PR_NUMBER> [OPTIONS]
 ```
 
 ### Опции просмотра
@@ -29,9 +29,9 @@ gh auth login
 Примеры:
 
 ```bash
-./gh-helper 123 --unresolved-only
-./gh-helper 11 --unresolved-only --count 1
-./gh-helper 11 -cr --count 1
+$> gh-helper 123 --unresolved-only
+$> gh-helper 11 --unresolved-only --count 1
+$> gh-helper 11 -cr --count 1
 ```
 
 ### Ответ и разрешение комментариев
@@ -44,10 +44,10 @@ gh auth login
 
 ```bash
 # Ответить на комментарий
-./gh-helper 123 --reply PR_kwDO... -m "Fixed as suggested"
+$> gh-helper 123 --reply PR_kwDO... -m "Fixed as suggested"
 
 # Ответить и разрешить комментарий
-./gh-helper 123 --reply PR_kwDO... --resolve -m "Fixed as suggested"
+$> gh-helper 123 --reply PR_kwDO... --resolve -m "Fixed as suggested"
 ```
 
 ## Формат вывода
@@ -65,19 +65,19 @@ gh auth login
 Показать все неразрешённые комментарии:
 
 ```bash
-./gh-helper 42 --unresolved-only
+$> gh-helper 42 --unresolved-only
 ```
 
 Показать только код-ревью:
 
 ```bash
-./gh-helper 42 -cr
+$> gh-helper 42 -cr
 ```
 
 Ответить и закрыть конкретный комментарий:
 
 ```bash
-./gh-helper 42 --reply PRRC_kwDOKJVcXM6cAhW8 --resolve -m "Implemented your suggestion"
+$> gh-helper 42 --reply PRRC_kwDOKJVcXM6cAhW8 --resolve -m "Implemented your suggestion"
 ```
 
 ## Требования

@@ -2,7 +2,7 @@
 
 # GH Helper Script
 # This script fetches pull request comments and displays them in a tree structure
-# Usage: ./gh-helper <PR_NUMBER> [OPTIONS]
+# Usage: $> gh-helper <PR_NUMBER> [OPTIONS]
 # Options:
 #   --code-review-only, -cr : Show only code review comments (comments on specific code lines)
 #   --reviews-only, -r : Show only reviews
