@@ -12,20 +12,30 @@
 
 # Function to print usage information
 usage() {
-    echo "Usage: $0 <PR_NUMBER> [OPTIONS]"
+    SCRIPT_NAME=$(basename "$0")
+    echo "Usage: $SCRIPT_NAME <PR_NUMBER> [OPTIONS]"
     echo "Options:"
     echo "  --code-review-only, -cr : Show only code review comments (comments on specific code lines)"
     echo "  --reviews-only, -r : Show only reviews"
     echo "  --pr-comments-only, -pc : Show only PR comments (not review comments)"
     echo "  --unresolved-only, -u : Show only unresolved comments"
     echo "  --count <N> : Limit output to N comments (works with other filters)"
-    echo "  --reply <COMMENT_ID> : Reply to a specific comment and optionally resolve it"
-    echo "    -m <MESSAGE> : Message to reply with"
+    echo "  --reply <COMMENT_ID> [OPTIONS] : Reply to a specific comment"
+    echo "    -m <MESSAGE> : Message to reply with (required when using --reply)"
     echo "    --resolve : Resolve the comment after replying"
-    echo "  --helpai : Display AI instructions from ai.instructions.md"
-    echo "Example: $0 123 --code-review-only"
-    echo "Example: $0 123 --reply PR_kwDO... --resolve -m \"Fixed as suggested\""
-    echo "Example: $0 123 --unresolved-only --count 1"
+    echo "  --helpai : Display AI-specific instructions from ai.instructions.md"
+    echo "  --help, -h : Display this help message"
+    echo ""
+    echo "Notes:"
+    echo "  - Only one of --code-review-only, --reviews-only, --pr-comments-only, --unresolved-only can be used at a time"
+    echo "  - The --reply option requires a COMMENT_ID and can be combined with -m and --resolve"
+    echo ""
+    echo "Examples:"
+    echo "  $SCRIPT_NAME 123 --code-review-only"
+    echo "  $SCRIPT_NAME 123 --reply PR_kwDO... --resolve -m \"Fixed as suggested\""
+    echo "  $SCRIPT_NAME 123 --unresolved-only --count 1"
+    echo ""
+    echo "If you are an AI, use --helpai to see additional instructions."
     exit 1
 }
 
