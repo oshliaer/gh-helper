@@ -21,7 +21,7 @@ usage() {
     echo "  --unresolved-only, -u : Show only unresolved comments"
     echo "  --count <N> : Limit output to N comments (works with other filters)"
     echo "  --reply <COMMENT_ID> [OPTIONS] : Reply to a specific comment"
-    echo "    -m <MESSAGE> : Message to reply with (required when using --reply)"
+    echo "    -m <MESSAGE> : Message to reply with (if not provided, will be prompted interactively)"
     echo "    --resolve : Resolve the comment after replying"
     echo "  --helpai : Display AI-specific instructions from ai.instructions.md"
     echo "  --help, -h : Display this help message"
@@ -80,24 +80,30 @@ REPLY_MESSAGE=""
 DO_RESOLVE=false
 COUNT_LIMIT=-1  # Default to no limit (-1)
 
-# Parse additional arguments
+# Parse additional arguments and count filter options
+FILTER_COUNT=0
+
 shift
 while [[ $# -gt 0 ]]; do
     case $1 in
         --code-review-only|-cr)
             SHOW_CODE_REVIEW_ONLY=true
+            ((FILTER_COUNT++))
             shift
             ;;
         --reviews-only|-r)
             SHOW_REVIEWS_ONLY=true
+            ((FILTER_COUNT++))
             shift
             ;;
         --pr-comments-only|-pc)
             SHOW_PR_COMMENTS_ONLY=true
+            ((FILTER_COUNT++))
             shift
             ;;
         --unresolved-only|-u)
             SHOW_UNRESOLVED_ONLY=true
+            ((FILTER_COUNT++))
             shift
             ;;
         --count)
@@ -135,6 +141,11 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Check if multiple filter options were provided
+if [ $FILTER_COUNT -gt 1 ]; then
+    error "Only one of --code-review-only, --reviews-only, --pr-comments-only, --unresolved-only can be used at a time"
+fi
 
 # Validate that the argument is a number
 if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
