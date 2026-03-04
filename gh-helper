@@ -23,7 +23,7 @@ usage() {
     echo "  --reply <COMMENT_ID> [OPTIONS] : Reply to a specific comment"
     echo "    -m <MESSAGE> : Message to reply with (if not provided, will be prompted interactively)"
     echo "    --resolve : Resolve the comment after replying"
-    echo "  --helpai : Display AI-specific instructions from ai.instructions.md"
+    echo "  --install-skill [global|local] : Install the Claude Code /review-pr skill"
     echo "  --help, -h : Display this help message"
     echo ""
     echo "Notes:"
@@ -34,22 +34,44 @@ usage() {
     echo "  $SCRIPT_NAME 123 --code-review-only"
     echo "  $SCRIPT_NAME 123 --reply PR_kwDO... --resolve -m \"Fixed as suggested\""
     echo "  $SCRIPT_NAME 123 --unresolved-only --count 1"
-    echo ""
-    echo "If you are an AI, use --helpai to see additional instructions."
     exit 1
 }
 
-# Function to print AI instructions
-helpai() {
+# Function to install the Claude Code skill
+install_skill() {
+    local scope="${1:-}"
     local script_dir
     script_dir="$(dirname "$(readlink -f "$0")")"
-    local instructions_file="$script_dir/ai.instructions.md"
-    if [[ -f "$instructions_file" ]]; then
-        cat "$instructions_file"
-    else
-        echo "Error: ai.instructions.md file not found in $script_dir" >&2
+    local skill_src="$script_dir/skills/review-pr.md"
+
+    if [[ ! -f "$skill_src" ]]; then
+        echo "Error: skill file not found: $skill_src" >&2
         exit 1
     fi
+
+    if [[ -z "$scope" ]]; then
+        echo "Where to install the /review-pr skill?"
+        echo "  1) global  — ~/.claude/commands/  (all projects)"
+        echo "  2) local   — .claude/commands/    (current project only)"
+        read -rp "Choose [1/2]: " choice
+        case "$choice" in
+            1) scope="global" ;;
+            2) scope="local" ;;
+            *) echo "Error: invalid choice" >&2; exit 1 ;;
+        esac
+    fi
+
+    local dest_dir
+    case "$scope" in
+        global) dest_dir="$HOME/.claude/commands" ;;
+        local)  dest_dir=".claude/commands" ;;
+        *) echo "Error: unknown scope '$scope'. Use 'global' or 'local'" >&2; exit 1 ;;
+    esac
+
+    mkdir -p "$dest_dir"
+    cp "$skill_src" "$dest_dir/review-pr.md"
+    echo "Skill installed: $dest_dir/review-pr.md"
+    echo "Use /review-pr <PR_NUMBER> in Claude Code to start a review cycle."
     exit 0
 }
 
@@ -64,9 +86,9 @@ if [ $# -lt 1 ] || [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
     usage
 fi
 
-# Check if --helpai is requested
-if [ "$1" = "--helpai" ]; then
-    helpai
+# Check if --install-skill is requested
+if [ "$1" = "--install-skill" ]; then
+    install_skill "${2:-}"
 fi
 
 PR_NUMBER=$1
@@ -131,9 +153,6 @@ while [[ $# -gt 0 ]]; do
         --resolve)
             DO_RESOLVE=true
             shift
-            ;;
-        --helpai)
-            helpai
             ;;
         *)
             echo "Unknown option: $1"

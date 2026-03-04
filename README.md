@@ -1,95 +1,148 @@
 # GH Helper
 
-GH Helper - это мощный инструмент командной строки для работы с комментариями и ревью в GitHub Pull Requests. Он позволяет просматривать, фильтровать и отвечать на комментарии, а также разрешать (закрывать) обсуждения прямо из терминала.
+Version: 0.2.0
 
-## Установка и настройка
+A command-line tool for working with comments and reviews in GitHub Pull Requests. View, filter, reply to comments, and resolve threads directly from the terminal.
 
-GH Helper требует установленного GitHub CLI (`gh`). Убедитесь, что вы авторизованы в GitHub CLI, выполнив:
+## Installation
+
+### As a GitHub CLI extension (recommended)
+
+```bash
+gh extension install oshliaer/gh-helper
+```
+
+After installation, the tool is invoked via `gh`:
+
+```bash
+gh helper <PR_NUMBER> [OPTIONS]
+```
+
+### Manually (global PATH)
+
+```bash
+git clone https://github.com/oshliaer/gh-helper.git
+sudo ln -s "$(pwd)/gh-helper/gh-helper" /usr/local/bin/gh-helper
+```
+
+Or add the directory to `~/.bashrc` / `~/.zshrc`:
+
+```bash
+export PATH="$PATH:/path/to/gh-helper"
+```
+
+### Requirements
+
+- [GitHub CLI](https://cli.github.com/) (`gh`)
+- `jq`
+- `bash`
+
+Authenticate with GitHub CLI:
 
 ```bash
 gh auth login
 ```
 
-## Использование
+## Claude Code skill `/review-pr`
 
-### Базовое использование
+The skill lets a Claude Code agent automatically work through all unresolved PR comments one by one — fixing code and replying to each thread.
 
-```bash
-$> gh-helper <PR_NUMBER> [OPTIONS]
-```
-
-### Опции просмотра
-
-- `--code-review-only`, `-cr` : Показать только код-ревью (комментарии к конкретным строкам кода)
-- `--reviews-only`, `-r` : Показать только ревью
-- `--pr-comments-only`, `-pc` : Показать только комментарии к PR (не входящие в ревью)
-- `--unresolved-only`, `-u` : Показать только неразрешённые комментарии
-- `--count <N>` : Ограничить вывод N комментариями (работает с другими фильтрами)
-
-Примеры:
+### Install globally (all projects)
 
 ```bash
-$> gh-helper 123 --unresolved-only
-$> gh-helper 11 --unresolved-only --count 1
-$> gh-helper 11 -cr --count 1
+gh-helper --install-skill global
 ```
 
-### Ответ и разрешение комментариев
-
-- `--reply <COMMENT_ID>` : Ответить на конкретный комментарий
-  - `-m <MESSAGE>` : Текст ответа
-  - `--resolve` : Разрешить комментарий после ответа
-
-Примеры:
+Or manually:
 
 ```bash
-# Ответить на комментарий
-$> gh-helper 123 --reply PR_kwDO... -m "Fixed as suggested"
-
-# Ответить и разрешить комментарий
-$> gh-helper 123 --reply PR_kwDO... --resolve -m "Fixed as suggested"
+mkdir -p ~/.claude/commands
+curl -sL https://raw.githubusercontent.com/oshliaer/gh-helper/master/skills/review-pr.md \
+  -o ~/.claude/commands/review-pr.md
 ```
 
-## Формат вывода
-
-Каждый комментарий отображается со следующей информацией:
-
-- ID комментария
-- Автор
-- Дата создания
-- Местоположение (файл и строка, если применимо)
-- Текст комментария с правильным форматированием
-
-## Примеры
-
-Показать все неразрешённые комментарии:
+### Install for current project only
 
 ```bash
-$> gh-helper 42 --unresolved-only
+gh-helper --install-skill local
 ```
 
-Показать только код-ревью:
+Or manually:
 
 ```bash
-$> gh-helper 42 -cr
+mkdir -p .claude/commands
+curl -sL https://raw.githubusercontent.com/oshliaer/gh-helper/master/skills/review-pr.md \
+  -o .claude/commands/review-pr.md
 ```
 
-Ответить и закрыть конкретный комментарий:
+### Usage
+
+In any Claude Code chat:
+
+```text
+/review-pr 123
+```
+
+The agent will fetch unresolved comments, make the required code changes, and reply to each thread.
+
+## Command reference
+
+### Basic usage
 
 ```bash
-$> gh-helper 42 --reply PRRC_kwDOKJVcXM6cAhW8 --resolve -m "Implemented your suggestion"
+gh-helper <PR_NUMBER> [OPTIONS]
 ```
 
-## Требования
+### View options
 
-- GitHub CLI (gh)
-- jq (для обработки JSON)
-- bash
+- `--code-review-only`, `-cr` — Show only code review comments (inline comments on specific lines)
+- `--reviews-only`, `-r` — Show only reviews
+- `--pr-comments-only`, `-pc` — Show only PR comments (not from reviews)
+- `--unresolved-only`, `-u` — Show only unresolved threads
+- `--count <N>` — Limit output to N comments (works with any filter)
 
-## Авторизация
+```bash
+gh-helper 123 --unresolved-only
+gh-helper 11 --unresolved-only --count 1
+gh-helper 11 -cr --count 1
+```
 
-Убедитесь, что вы авторизованы в GitHub CLI с правами, достаточными для:
+### Replying and resolving
 
-- Чтения комментариев к PR
-- Отправки комментариев к PR
-- Разрешения (закрытия) комментариев
+- `--reply <COMMENT_ID>` — Reply to a specific comment
+  - `-m <MESSAGE>` — Reply text
+  - `--resolve` — Resolve the thread after replying
+
+```bash
+# Reply to a comment
+gh-helper 123 --reply PR_kwDO... -m "Fixed as suggested"
+
+# Reply and resolve
+gh-helper 123 --reply PR_kwDO... --resolve -m "Fixed as suggested"
+```
+
+### Skill installation
+
+```bash
+gh-helper --install-skill global   # install for all projects
+gh-helper --install-skill local    # install for current project
+gh-helper --install-skill          # interactive prompt
+```
+
+## Output format
+
+Each comment is displayed with:
+
+- Comment ID
+- Author
+- Created date
+- Location (file and line, if applicable)
+- Comment body
+
+## Permissions
+
+The GitHub CLI token must have permission to:
+
+- Read PR comments
+- Post PR comments
+- Resolve review threads
