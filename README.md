@@ -1,6 +1,8 @@
 # GH Helper
 
-A command-line tool for working with comments and reviews in GitHub Pull Requests. View, filter, reply to comments, and resolve threads directly from the terminal.
+Responding to code review means context-switching between terminal and browser, and asking an AI agent to help means hoping it gets the GitHub API format right. **GH Helper** solves both: it brings the review workflow into the terminal and provides a simple, stable interface that AI agents can use without guessing at GraphQL queries or REST endpoints.
+
+The bundled Claude Code skill `/review-pr` puts the whole cycle on autopilot — the agent reads each unresolved comment, fixes the code, replies in context, and resolves the thread, unsupervised.
 
 ## Installation
 
