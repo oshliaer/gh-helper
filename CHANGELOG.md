@@ -5,7 +5,6 @@
 ### Added
 
 - `CLAUDE.md` — Claude Code instructions for working with the repository
-- `README.ru.md` — Russian version of the documentation
 - `skills/review-pr.md` — `/review-pr` skill for Claude Code to automate iterative PR review comment resolution
 - `--install-skill [global|local]` — command to install the skill to `~/.claude/commands/` or `.claude/commands/`
 - `VERSION` — project version file

@@ -13,7 +13,10 @@
 # Function to print usage information
 usage() {
     SCRIPT_NAME=$(basename "$0")
-    echo "Usage: $SCRIPT_NAME <PR_NUMBER> [OPTIONS]"
+    echo "Usage:"
+    echo "  $SCRIPT_NAME <PR_NUMBER> [OPTIONS]"
+    echo "  $SCRIPT_NAME --install-skill [global|local]"
+    echo ""
     echo "Options:"
     echo "  --code-review-only, -cr : Show only code review comments (comments on specific code lines)"
     echo "  --reviews-only, -r : Show only reviews"
@@ -63,8 +66,17 @@ install_skill() {
 
     local dest_dir
     case "$scope" in
-        global) dest_dir="$HOME/.claude/commands" ;;
-        local)  dest_dir=".claude/commands" ;;
+        global)
+            dest_dir="$HOME/.claude/commands"
+            ;;
+        local)
+            if git_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+                dest_dir="$git_root/.claude/commands"
+            else
+                dest_dir=".claude/commands"
+                echo "Warning: could not determine git repository root; installing relative to current directory: $PWD/.claude/commands" >&2
+            fi
+            ;;
         *) echo "Error: unknown scope '$scope'. Use 'global' or 'local'" >&2; exit 1 ;;
     esac
 
@@ -587,7 +599,9 @@ reply_to_comment() {
           }
         }
       }
-    ' -F owner="$OWNER" -F name="$REPO" -F pr_number="$PR_NUMBER" --jq ".data.repository.pullRequest.reviewThreads.nodes[] | select(.comments.nodes[].id == \"$REPLY_COMMENT_ID\") | .id")
+    ' -F owner="$OWNER" -F name="$REPO" -F pr_number="$PR_NUMBER" \
+      | jq -r --arg comment_id "$REPLY_COMMENT_ID" \
+          '.data.repository.pullRequest.reviewThreads.nodes[] | select(.comments.nodes[].id == $comment_id) | .id')
 
     if [ -n "$THREAD_ID" ]; then
         echo "Found thread ID: $THREAD_ID"
@@ -606,7 +620,7 @@ reply_to_comment() {
               }
             }
           }
-        ' -F pullRequestReviewThreadId="$THREAD_ID" -F body="$REPLY_MESSAGE" 2>&1)
+        ' -f pullRequestReviewThreadId="$THREAD_ID" -f body="$REPLY_MESSAGE" 2>&1)
 
         if [ $? -eq 0 ]; then
             echo "Successfully replied to comment thread."

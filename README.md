@@ -1,7 +1,5 @@
 # GH Helper
 
-Version: 0.2.0
-
 A command-line tool for working with comments and reviews in GitHub Pull Requests. View, filter, reply to comments, and resolve threads directly from the terminal.
 
 ## Installation
@@ -22,7 +20,8 @@ gh helper <PR_NUMBER> [OPTIONS]
 
 ```bash
 git clone https://github.com/oshliaer/gh-helper.git
-sudo ln -s "$(pwd)/gh-helper/gh-helper" /usr/local/bin/gh-helper
+cd gh-helper
+sudo ln -s "$(pwd)/gh-helper" /usr/local/bin/gh-helper
 ```
 
 Or add the directory to `~/.bashrc` / `~/.zshrc`:
@@ -50,6 +49,10 @@ The skill lets a Claude Code agent automatically work through all unresolved PR 
 ### Install globally (all projects)
 
 ```bash
+# if installed as gh extension
+gh helper --install-skill global
+
+# if installed as standalone script
 gh-helper --install-skill global
 ```
 
@@ -64,6 +67,10 @@ curl -sL https://raw.githubusercontent.com/oshliaer/gh-helper/master/skills/revi
 ### Install for current project only
 
 ```bash
+# if installed as gh extension
+gh helper --install-skill local
+
+# if installed as standalone script
 gh-helper --install-skill local
 ```
 
