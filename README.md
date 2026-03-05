@@ -58,12 +58,15 @@ gh helper --install-skill global
 gh-helper --install-skill global
 ```
 
-Or manually:
+Or manually via curl:
 
 ```bash
-mkdir -p ~/.claude/commands
-curl -sL https://raw.githubusercontent.com/oshliaer/gh-helper/master/skills/review-pr.md \
+mkdir -p ~/.claude/commands/review-pr/scripts
+curl -sL https://raw.githubusercontent.com/oshliaer/gh-helper/master/skills/review-pr/SKILL.md \
   -o ~/.claude/commands/review-pr.md
+curl -sL https://raw.githubusercontent.com/oshliaer/gh-helper/master/skills/review-pr/scripts/detect-cmd.sh \
+  -o ~/.claude/commands/review-pr/scripts/detect-cmd.sh
+chmod +x ~/.claude/commands/review-pr/scripts/detect-cmd.sh
 ```
 
 ### Install for current project only
@@ -76,12 +79,29 @@ gh helper --install-skill local
 gh-helper --install-skill local
 ```
 
-Or manually:
+Or manually via curl:
 
 ```bash
-mkdir -p .claude/commands
-curl -sL https://raw.githubusercontent.com/oshliaer/gh-helper/master/skills/review-pr.md \
+mkdir -p .claude/commands/review-pr/scripts
+curl -sL https://raw.githubusercontent.com/oshliaer/gh-helper/master/skills/review-pr/SKILL.md \
   -o .claude/commands/review-pr.md
+curl -sL https://raw.githubusercontent.com/oshliaer/gh-helper/master/skills/review-pr/scripts/detect-cmd.sh \
+  -o .claude/commands/review-pr/scripts/detect-cmd.sh
+chmod +x .claude/commands/review-pr/scripts/detect-cmd.sh
+```
+
+### Update / reinstall the skill
+
+After updating gh-helper, reinstall the skill to get the latest version:
+
+```bash
+# if installed as gh extension
+gh extension upgrade helper
+gh helper --install-skill global   # or local
+
+# if installed as standalone script
+git -C /path/to/gh-helper pull
+gh-helper --install-skill global   # or local
 ```
 
 ### Usage

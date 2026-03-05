@@ -45,7 +45,7 @@ install_skill() {
     local scope="${1:-}"
     local script_dir
     script_dir="$(dirname "$(readlink -f "$0")")"
-    local skill_src="$script_dir/skills/review-pr.md"
+    local skill_src="$script_dir/skills/review-pr/SKILL.md"
 
     if [[ ! -f "$skill_src" ]]; then
         echo "Error: skill file not found: $skill_src" >&2
@@ -82,7 +82,21 @@ install_skill() {
 
     mkdir -p "$dest_dir"
     cp "$skill_src" "$dest_dir/review-pr.md"
-    echo "Skill installed: $dest_dir/review-pr.md"
+    local scripts_src="$script_dir/skills/review-pr/scripts"
+    if [[ -d "$scripts_src" ]]; then
+        shopt -s nullglob
+        local script_files=("$scripts_src"/*)
+        shopt -u nullglob
+        if (( ${#script_files[@]} )); then
+            mkdir -p "$dest_dir/review-pr/scripts"
+            for script in "${script_files[@]}"; do
+                [[ -f "$script" ]] || continue
+                cp "$script" "$dest_dir/review-pr/scripts/"
+                chmod +x "$dest_dir/review-pr/scripts/$(basename "$script")"
+            done
+        fi
+    fi
+    echo "/review-pr skill installed: $dest_dir/review-pr.md"
     echo "Use /review-pr <PR_NUMBER> in Claude Code to start a review cycle."
     exit 0
 }

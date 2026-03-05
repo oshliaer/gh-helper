@@ -1,0 +1,21 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y \
+    curl git jq bash ca-certificates \
+    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+       | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] \
+       https://cli.github.com/packages stable main" \
+       > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update && apt-get install -y gh \
+    && rm -rf /var/lib/apt/lists/*
+
+# git config + safe.directory for mounted volume
+RUN git config --global user.email "test@test.local" \
+ && git config --global user.name "test" \
+ && git config --global --add safe.directory /root/gh-helper
+
+# gh extension install uses the directory name as the extension name → must be gh-helper
+WORKDIR /root/gh-helper
+
+CMD ["bash", "test-install.sh"]
