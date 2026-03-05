@@ -17,6 +17,10 @@ set -uo pipefail
 PASS=0
 FAIL=0
 GIT_ROOT=$(git rev-parse --show-toplevel)
+if [[ -z "${GIT_ROOT:-}" ]] || [[ ! -d "$GIT_ROOT" ]]; then
+  echo "Error: could not determine git repository root. Run this script from within a git repo." >&2
+  exit 1
+fi
 SCRIPT="$GIT_ROOT/gh-helper"
 
 ok()   { echo "  ok  $*"; PASS=$((PASS+1)); }
@@ -190,7 +194,7 @@ install_extension
 install_skill_local
 
 # Run the actual setup block from SKILL.md from project root (as Claude Code would)
-cd "$GIT_ROOT"
+cd "$GIT_ROOT" || { fail "could not cd to $GIT_ROOT"; exit 1; }
 GH_HELPER=$(bash "$DETECT_LOCAL" 2>/dev/null \
   || bash "$DETECT_GLOBAL" 2>/dev/null \
   || true)

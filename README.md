@@ -79,12 +79,15 @@ gh helper --install-skill local
 gh-helper --install-skill local
 ```
 
-Or manually:
+Or manually via curl:
 
 ```bash
-mkdir -p .claude/commands
+mkdir -p .claude/commands/review-pr/scripts
 curl -sL https://raw.githubusercontent.com/oshliaer/gh-helper/master/skills/review-pr/SKILL.md \
   -o .claude/commands/review-pr.md
+curl -sL https://raw.githubusercontent.com/oshliaer/gh-helper/master/skills/review-pr/scripts/detect-cmd.sh \
+  -o .claude/commands/review-pr/scripts/detect-cmd.sh
+chmod +x .claude/commands/review-pr/scripts/detect-cmd.sh
 ```
 
 ### Update / reinstall the skill

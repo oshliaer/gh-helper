@@ -18,10 +18,15 @@ Before anything else, run the detection script installed alongside this skill:
 ```bash
 GH_HELPER=$(bash .claude/commands/review-pr/scripts/detect-cmd.sh 2>/dev/null \
   || bash ~/.claude/commands/review-pr/scripts/detect-cmd.sh)
+if [ -z "$GH_HELPER" ]; then
+  echo "ERROR: Could not detect gh-helper command. Please reinstall the skill:" >&2
+  echo "  gh helper --install-skill   or   gh-helper --install-skill" >&2
+  exit 1
+fi
 echo "Using: $GH_HELPER"
 ```
 
-- If the script fails — stop and tell the user to reinstall the skill: `gh helper --install-skill` or `gh-helper --install-skill`
+- If the block exits with an error — stop and tell the user to reinstall the skill.
 - Otherwise remember the value (e.g. `gh helper` or `gh-helper`) and use it as the command in every step below.
 
 ## Cycle
@@ -31,7 +36,7 @@ Repeat the following steps until the output says "No unresolved comments found":
 ### Step 1. Get the next comment
 
 ```bash
-<GH_HELPER> $ARGUMENTS -u --count 1
+<GH_HELPER> '<PR_NUMBER>' -u --count 1
 ```
 
 If the output contains "No unresolved comments found" — all done.
@@ -43,10 +48,12 @@ Using all available tools (read files, edit code, etc.), do what the comment req
 ### Step 3. Reply and resolve
 
 ```bash
-<GH_HELPER> $ARGUMENTS --reply <COMMENT_ID> --resolve -m "<Message in the author's language>"
+<GH_HELPER> <PR_NUMBER> --reply <COMMENT_ID> --resolve -m '<message>'
 ```
 
-- `<COMMENT_ID>` — value of the `Comment ID:` field from Step 1 output
+- `<PR_NUMBER>` — numeric PR number (e.g. `10`)
+- `<COMMENT_ID>` — value of the `Comment ID:` field from Step 1 output (alphanumeric node ID)
+- `<message>` — use **single quotes** to prevent shell injection; escape any `'` inside as `'\''`
 - `<GH_HELPER>` — the exact value detected in Setup (e.g. `gh helper` or `gh-helper`)
 - The message should briefly describe what was done
 - Reply in the same language as the comment author
